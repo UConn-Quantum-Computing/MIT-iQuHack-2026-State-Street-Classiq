@@ -13,36 +13,41 @@ def calculate_analytical_var(mu, sigma, confidence_level):
     # Example: 95% confidence => 5th percentile of returns.
     return stats.norm.ppf(1 - confidence_level, loc=mu, scale=sigma)
 
-def monte_carlo_var_simulation(mu, sigma, confidence_level, sample_sizes):
+def monte_carlo_var_simulation(mu, sigma, confidence_level, sample_sizes, num_trials=50):
     """
     Runs Monte Carlo simulations for various sample sizes to estimate VaR.
+    Averages error over `num_trials` to smooth the curve.
     """
     analytical_var = calculate_analytical_var(mu, sigma, confidence_level)
     
-    estimated_vars = []
-    errors = []
-    
-    # We will repeat the experiment multiple times for each N to get an average error
-    # or just do one run per N to show the noisy convergence. One run is standard for this demo.
+    estimated_vars_means = [] # We'll plot the mean estimated VaR just for viz
+    avg_errors = []
     
     print(f"Analytical VaR ({(confidence_level)*100}%): {analytical_var:.6f}")
     
     for n in sample_sizes:
-        # 1. Generate N random returns from N(mu, sigma)
-        returns = np.random.normal(mu, sigma, n)
+        current_n_errors = []
+        current_n_vars = []
         
-        # 2. Estimate VaR: The (1-alpha) percentile of the empirical distribution
-        # percent param in percentile is 0-100
-        percentile = (1 - confidence_level) * 100
-        estimated_var = np.percentile(returns, percentile)
+        for _ in range(num_trials):
+            # 1. Generate N random returns from N(mu, sigma)
+            returns = np.random.normal(mu, sigma, n)
+            
+            # 2. Estimate VaR
+            percentile = (1 - confidence_level) * 100
+            estimated_var = np.percentile(returns, percentile)
+            
+            # 3. Calculate absolute error
+            error = abs(estimated_var - analytical_var)
+            
+            current_n_vars.append(estimated_var)
+            current_n_errors.append(error)
         
-        estimated_vars.append(estimated_var)
-        
-        # 3. Calculate absolute error
-        error = abs(estimated_var - analytical_var)
-        errors.append(error)
+        # Store averages
+        estimated_vars_means.append(np.mean(current_n_vars))
+        avg_errors.append(np.mean(current_n_errors))
 
-    return analytical_var, estimated_vars, errors
+    return analytical_var, estimated_vars_means, avg_errors
 
 def main():
     # Parameters
@@ -57,10 +62,10 @@ def main():
     analytical_var, estimated_vars, errors = monte_carlo_var_simulation(mu, sigma, confidence_level, sample_sizes)
     
     # Plotting
-    plt.figure(figsize=(12, 10))
+    plt.figure(figsize=(12, 15))
     
     # Subplot 1: Convergence of VaR estimate
-    plt.subplot(2, 1, 1)
+    plt.subplot(3, 1, 1)
     plt.plot(sample_sizes, estimated_vars, label='MC Estimated VaR', color='blue', alpha=0.7)
     plt.axhline(y=analytical_var, color='red', linestyle='--', label=f'Analytical VaR ({analytical_var:.5f})')
     plt.xscale('log')
@@ -71,12 +76,10 @@ def main():
     plt.grid(True, which="both", ls="-", alpha=0.2)
     
     # Subplot 2: Error Scaling (Log-Log Plot)
-    plt.subplot(2, 1, 2)
-    plt.loglog(sample_sizes, errors, 'o', label='Absolute Error', markersize=4, color='green')
+    plt.subplot(3, 1, 2)
+    plt.loglog(sample_sizes, errors, 'o', label='Average Absolute Error', markersize=4, color='green')
     
     # Fit a reference line for O(1/sqrt(N)) => log(Err) ~ -0.5 * log(N) + C
-    # We want to show slope is roughly -0.5
-    # Let's fit a line to the log-log data
     log_N = np.log(sample_sizes)
     log_Err = np.log(errors)
     slope, intercept = np.polyfit(log_N, log_Err, 1)
@@ -85,16 +88,32 @@ def main():
              label=f'Best Fit Line (Slope = {slope:.2f})')
     
     # Theoretical O(1/sqrt(N)) reference
-    # Just anchor it to the middle point for visualization
     mid_idx = len(sample_sizes) // 2
     ref_constant = errors[mid_idx] * np.sqrt(sample_sizes[mid_idx])
     plt.plot(sample_sizes, ref_constant / np.sqrt(sample_sizes), 'k:', label='Theoretical $O(1/\sqrt{N})$')
 
     plt.xlabel('Number of Samples (N)')
-    plt.ylabel('Absolute Error |Estimated - Analytical|')
-    plt.title('Monte Carlo Error Scaling')
+    plt.ylabel('Average Absolute Error')
+    plt.title(f'Monte Carlo Error Scaling (Averaged over separate trials)')
     plt.legend()
     plt.grid(True, which="both", ls="-", alpha=0.2)
+
+    # Subplot 3: N vs 1/Error^2 (Demonstrating O(1/epsilon^2))
+    plt.subplot(3, 1, 3)
+    inv_squared_errors = 1.0 / (np.array(errors)**2)
+    plt.plot(inv_squared_errors, sample_sizes, 'o', color='purple', label='Samples vs $1/\epsilon^2$', markersize=4)
+    
+    # Best fit line for this plot (Linear)
+    # We expect N ~ k * (1/Error^2)
+    # Fit y = m*x + c
+    m, c = np.polyfit(inv_squared_errors, sample_sizes, 1)
+    plt.plot(inv_squared_errors, m*inv_squared_errors + c, 'r--', label=f'Linear Fit (y={m:.2f}x + {c:.0f})')
+    
+    plt.xlabel('Inverse Squared Error ($1/\epsilon^2$)')
+    plt.ylabel('Number of Samples (N)')
+    plt.title('Sample Cost vs Precision ($N \propto 1/\epsilon^2$)')
+    plt.legend()
+    plt.grid(True, alpha=0.2)
     
     plt.tight_layout()
     plt.savefig('monte_carlo_convergence.png')
