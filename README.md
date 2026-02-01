@@ -19,7 +19,7 @@ This repository contains the analysis and implementation for **Value at Risk (Va
 │
 ├── extension-var-analysis/       # Advanced risk metrics & methods
 │   ├── cvar_analysis.ipynb                 # Conditional VaR (CVaR)
-│   ├── evar.ipynb                          # Entropic VaR (EVaR)
+│   ├── evar.ipynb                          # Expectile VaR (EVaR)
 │   └── qsp.ipynb                           # Quantum Singular Value Transf. (QSVT/QSP)
 │
 ├── non-gaussian-analysis/        # Real-world distribution tests
